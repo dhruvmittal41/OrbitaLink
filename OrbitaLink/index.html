@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Live Angle Monitor</title>
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     :root {
       --primary: #007BFF;
@@ -26,7 +27,7 @@
       background-color: var(--bg);
       color: var(--text);
       display: flex;
-      justify-content: center;
+      flex-direction: column;
       align-items: center;
       min-height: 100vh;
       padding: 20px;
@@ -37,9 +38,10 @@
       padding: 30px 40px;
       border-radius: 16px;
       box-shadow: var(--shadow);
-      max-width: 450px;
+      max-width: 600px;
       width: 100%;
       text-align: center;
+      margin-bottom: 30px;
       animation: fadeIn 0.5s ease-in-out;
     }
 
@@ -100,6 +102,10 @@
       color: #888;
     }
 
+    canvas {
+      max-width: 90vw;
+    }
+
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(10px); }
       to { opacity: 1; transform: translateY(0); }
@@ -126,22 +132,95 @@
     </div>
   </div>
 
+  <canvas id="angleChart" height="100"></canvas>
+
   <script>
     const socket = io();
+
+    const azimuthDisplay = document.getElementById("azimuth");
+    const elevationDisplay = document.getElementById("elevation");
+    const timestampDisplay = document.getElementById("last-updated");
+
+    const timeLabels = [];
+    const azimuthData = [];
+    const elevationData = [];
+
+    const chart = new Chart(document.getElementById("angleChart"), {
+      type: 'line',
+      data: {
+        labels: timeLabels,
+        datasets: [
+          {
+            label: 'Azimuathal Angle',
+            data: azimuthData,
+            borderColor: 'rgba(0, 123, 255, 0.8)',
+            backgroundColor: 'rgba(0, 123, 255, 0.1)',
+            fill: true,
+            tension: 0.3
+          },
+          {
+            label: 'Elevation Angle',
+            data: elevationData,
+            borderColor: 'rgba(40, 167, 69, 0.8)',
+            backgroundColor: 'rgba(40, 167, 69, 0.1)',
+            fill: true,
+            tension: 0.3
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          x: {
+            title: {
+              display: true,
+              text: "Time"
+            }
+          },
+          y: {
+            title: {
+              display: true,
+              text: "Angle (degrees)"
+            },
+            suggestedMin: 0,
+            suggestedMax: 100
+          }
+        }
+      }
+    });
+
+    function updateTimestamp() {
+      const now = new Date();
+      timestampDisplay.textContent = now.toLocaleTimeString();
+      return now.toLocaleTimeString();
+    }
 
     socket.on("connect", () => {
       console.log("Connected to server");
     });
 
-    function updateTimestamp() {
-      const now = new Date();
-      document.getElementById("last-updated").textContent = now.toLocaleTimeString();
-    }
-
     socket.on("angle_update", (data) => {
-      document.getElementById("azimuth").textContent = data['Azimuathal Angle'];
-      document.getElementById("elevation").textContent = data['Elevation Angle'];
-      updateTimestamp();
+      const azimuth = data['Azimuathal Angle'];
+      const elevation = data['Elevation Angle'];
+
+      // Update text
+      azimuthDisplay.textContent = azimuth;
+      elevationDisplay.textContent = elevation;
+
+      // Update chart
+      const time = updateTimestamp();
+      timeLabels.push(time);
+      azimuthData.push(azimuth);
+      elevationData.push(elevation);
+
+      // Limit to last 20 data points
+      if (timeLabels.length > 20) {
+        timeLabels.shift();
+        azimuthData.shift();
+        elevationData.shift();
+      }
+
+      chart.update();
     });
 
     socket.on("disconnect", () => {

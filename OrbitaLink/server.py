@@ -1,30 +1,43 @@
-import socketio
-from aiohttp import web
+from flask import Flask, send_from_directory, request
+from flask_socketio import SocketIO, emit
 
-# Create a Socket.IO server
-sio = socketio.AsyncServer(cors_allowed_origins='*')
-app = web.Application()
-sio.attach(app)
+app = Flask(__name__, static_folder='.')
+socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Serve the index.html page
-async def index(request):
-    return web.FileResponse('index.html')  # must be in same folder
+clients = set()
+servers = set()
 
-app.router.add_get('/', index)
+@app.route('/')
+def index():
+    return send_from_directory('.', 'menu.html')
 
-# Handle data from Python client
-@sio.on('client_to_server')
-async def handle_angles(sid, data):
-    await sio.emit('angle_update', data)  # broadcast to web clients
+@socketio.on('register_client')
+def handle_client_register(data):
+    sid = request.sid
+    clients.add(sid)
+    print(f"Client registered: {sid}")
+    update_status()
 
-@sio.event
-async def connect(sid, environ):
-    print(f"Client connected: {sid}")
+@socketio.on('register_server')
+def handle_server_register(data):
+    sid = request.sid
+    servers.add(sid)
+    print(f"Server registered: {sid}")
+    update_status()
 
-@sio.event
-async def disconnect(sid):
-    print(f"Client disconnected: {sid}")
+@socketio.on('disconnect')
+def handle_disconnect():
+    sid = request.sid
+    clients.discard(sid)
+    servers.discard(sid)
+    print(f"Disconnected: {sid}")
+    update_status()
 
-# Run the app
+def update_status():
+    socketio.emit('status_update', {
+        'clients': list(clients),
+        'servers': list(servers)
+    })
+
 if __name__ == '__main__':
-  web.run_app(app, port=5000, host='0.0.0.0')
+    socketio.run(app, host='0.0.0.0', port=5000)
