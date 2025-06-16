@@ -1,25 +1,30 @@
-import eventlet
 import socketio
+from aiohttp import web
 
-sio = socketio.Server()
-app = socketio.WSGIApp(sio)
+# Create a Socket.IO server
+sio = socketio.AsyncServer(cors_allowed_origins='*')
+app = web.Application()
+sio.attach(app)
+
+# Serve the index.html page
+async def index(request):
+    return web.FileResponse('index.html')  # must be in same folder
+
+app.router.add_get('/', index)
+
+# Handle data from Python client
+@sio.on('client_to_server')
+async def handle_angles(sid, data):
+    await sio.emit('angle_update', data)  # broadcast to web clients
 
 @sio.event
-def connect(sid, environ):
-    print('Connected to Session ID:', sid)
+async def connect(sid, environ):
+    print(f"Client connected: {sid}")
 
 @sio.event
-def client_to_server(sid, data):
-    print('message :', data)
-    
-# @sio.event
-# def server_to_client():
-#     sio.emit('received_by_client', {'Updated Azimuathal Angle': 55, 'Updated Elevation Angle' : 50})
-#     sio.sleep(1)
+async def disconnect(sid):
+    print(f"Client disconnected: {sid}")
 
-@sio.event
-def disconnect(sid):
-    print('Disconnected to Session ID:', sid)
-
+# Run the app
 if __name__ == '__main__':
-    eventlet.wsgi.server(eventlet.listen(('', 5000)), app)
+  web.run_app(app, port=5000, host='0.0.0.0')

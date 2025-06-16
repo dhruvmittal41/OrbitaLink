@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Live Angle Monitor</title>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    h2 { color: #444; }
+    .angle { font-size: 1.2rem; margin: 10px 0; }
+  </style>
+</head>
+<body>
+  <h2>Live Angle Data from Python Client</h2>
+  <div class="angle">Azimuathal Angle: <span id="azimuth">--</span></div>
+  <div class="angle">Elevation Angle: <span id="elevation">--</span></div>
+
+  <script>
+    const socket = io();
+
+    socket.on("connect", () => {
+      console.log("Connected to server");
+    });
+
+    socket.on("angle_update", (data) => {
+      console.log("data fetched")
+      document.getElementById("azimuth").textContent = data['Azimuathal Angle'];
+      document.getElementById("elevation").textContent = data['Elevation Angle'];
+    });
+
+    socket.on("disconnect", () => {
+      console.log("Disconnected from server");
+    });
+  </script>
+</body>
+</html>
