@@ -1,31 +1,55 @@
-import eventlet
 import socketio
+import time
+import requests
+import os
+from flask import request
 
-sio = socketio.Server()
-app = socketio.WSGIApp(sio)
+from flask import Flask
+from flask_socketio import SocketIO
 
-@sio.event
-def connect(sid, environ):
-    print('Connected to Session ID:', sid)
+# === Flask App Config ===
+app = Flask(__name__)
+socketio = SocketIO(app, cors_allowed_origins="*")
 
-@sio.event
-def client_to_server(sid, data):
-    print('message :', data)
-    server_to_client(sid)
-    # sio.emit('server_to_client', {'Target Az Angle': 55, 'Target El Angle' : 50}, to=sid)
+SERVER_NAME = os.getenv("SERVER_NAME", "Server 2")
+MAIN_SERVER_URL = os.getenv("MAIN_SERVER_URL", "http://localhost:5000")
 
-def server_to_client(sid):
-    sio.emit('server_to_client', {'Target Az Angle': 55, 'Target El Angle' : 50}, to=sid)
-    sio.sleep(1)
 
-@sio.event
-def disconnect(sid, reason):
-    if reason == sio.reason.CLIENT_DISCONNECT:
-        print('the client disconnected')
-    elif reason == sio.reason.SERVER_DISCONNECT:
-        print('the server disconnected the client')
-    else:
-        print('disconnect reason:', reason)
+# === Register with Main Server ===
+def register_with_main_server():
+    try:
+        res = requests.post(
+            f"{MAIN_SERVER_URL}/register_activity",
+            json={"client": None, "server": SERVER_NAME},
+        )
+        if res.status_code == 200:
+            print(f"[✓] Server '{SERVER_NAME}' registered with main server.")
+        else:
+            print(f"[!] Failed to register server. Status: {res.status_code}")
+    except Exception as e:
+        print(f"[x] Error registering server: {e}")
 
-if __name__ == '__main__':
-    eventlet.wsgi.server(eventlet.listen(('', 5000)), app)
+
+# === Handle Connected Client ===
+@socketio.on("register_client")
+def handle_client(data):
+    client_name = data.get("name", f"Client-{request.sid[:5]}")
+    print(f"{client_name} connected to {SERVER_NAME}")
+
+    try:
+        requests.post(
+            f"{MAIN_SERVER_URL}/register_activity",
+            json={"client": client_name, "server": SERVER_NAME},
+        )
+    except requests.RequestException as e:
+        print("Error notifying main server:", e)
+
+
+@socketio.on("disconnect")
+def disconnect():
+    print("Client disconnected")
+
+
+if __name__ == "__main__":
+    register_with_main_server()  # 🟢 Register on startup
+    socketio.run(app, host="0.0.0.0", port=5002)

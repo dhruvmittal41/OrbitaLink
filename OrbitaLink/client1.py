@@ -1,33 +1,67 @@
 import socketio
-import random
 import time
+import random
+import requests
 
-# Create Socket.IO client instance
+MAIN_SERVER_URL = "http://localhost:5000"
+CLIENT_NAME = "Client A"
+
+main_sio = socketio.Client()
+
+
+@main_sio.event
+def connect():
+    main_sio.emit("register_client", {"name": CLIENT_NAME})
+
+
+main_sio.connect("http://localhost:5000")
+
+
 sio = socketio.Client()
 
-# Background task to send random angle values
-def send_angles():
-    while True:
-        azimuth = random.uniform(0, 360)
-        elevation = random.uniform(0, 360)
-        sio.emit('client_to_server', {
-            'Azimuathal Angle': round(azimuth, 2),
-            'Elevation Angle': round(elevation, 2)
-        })
-        time.sleep(1)
 
-# Event handler for successful connection
 @sio.event
 def connect():
-    print("✅ Connected to server")
-    sio.emit('register_client', {})  # Notify server this is a client
+    print(f"{CLIENT_NAME} connected")
+    sio.emit("register_client", {"name": CLIENT_NAME})
     sio.start_background_task(send_angles)
 
-# Event handler for disconnection
+
 @sio.event
 def disconnect():
-    print("❌ Disconnected from server")
+    print(f"{CLIENT_NAME} disconnected")
 
-# Connect to the server
-sio.connect('http://127.0.0.1:5000')
-sio.wait()
+
+def send_angles():
+    while True:
+        az = round(random.uniform(0, 360), 2)
+        el = round(random.uniform(0, 360), 2)
+        sio.emit("client_to_server", {"Azimuthal Angle": az, "Elevation Angle": el})
+        time.sleep(1)
+
+
+def get_server_port():
+    try:
+        res = requests.get(
+            f"{MAIN_SERVER_URL}/get_server_for_client", params={"client": CLIENT_NAME}
+        )
+        if res.status_code == 200:
+            return res.json().get("server_port")
+    except Exception as e:
+        print("Error getting server port:", e)
+    return None
+
+
+if __name__ == "__main__":
+    while True:
+        port = get_server_port()
+        if port:
+            try:
+                SERVER_URL = f"http://localhost:{port}"
+                sio.connect(SERVER_URL)
+                sio.wait()
+            except Exception as e:
+                print(f"Retrying... failed to connect to {SERVER_URL}: {e}")
+        else:
+            print("Waiting for user to assign server...")
+        time.sleep(3)

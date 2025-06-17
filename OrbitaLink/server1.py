@@ -1,26 +1,55 @@
 import socketio
 import time
+import requests
+import os
+from flask import request
 
-# Create Socket.IO client instance
-sio = socketio.Client()
+from flask import Flask
+from flask_socketio import SocketIO
 
-# Event when connected to the main Flask-SocketIO server
-@sio.event
-def connect():
-    print("✅ Server1 connected to Flask server")
-    sio.emit('register_server', {})  # Let the Flask backend know this is a "server" agent
+# === Flask App Config ===
+app = Flask(__name__)
+socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Event when disconnected
-@sio.event
+SERVER_NAME = os.getenv("SERVER_NAME", "Server 1")
+MAIN_SERVER_URL = os.getenv("MAIN_SERVER_URL", "http://localhost:5000")
+
+
+# === Register with Main Server ===
+def register_with_main_server():
+    try:
+        res = requests.post(
+            f"{MAIN_SERVER_URL}/register_activity",
+            json={"client": None, "server": SERVER_NAME},
+        )
+        if res.status_code == 200:
+            print(f"[✓] Server '{SERVER_NAME}' registered with main server.")
+        else:
+            print(f"[!] Failed to register server. Status: {res.status_code}")
+    except Exception as e:
+        print(f"[x] Error registering server: {e}")
+
+
+# === Handle Connected Client ===
+@socketio.on("register_client")
+def handle_client(data):
+    client_name = data.get("name", f"Client-{request.sid[:5]}")
+    print(f"{client_name} connected to {SERVER_NAME}")
+
+    try:
+        requests.post(
+            f"{MAIN_SERVER_URL}/register_activity",
+            json={"client": client_name, "server": SERVER_NAME},
+        )
+    except requests.RequestException as e:
+        print("Error notifying main server:", e)
+
+
+@socketio.on("disconnect")
 def disconnect():
-    print("❌ Server1 disconnected")
+    print("Client disconnected")
 
-# Optional - Keep connection alive (you could send some data too)
-def keep_alive():
-    while True:
-        sio.sleep(10)  # Can be used to emit heartbeats or server status if needed
 
-# Connect to the Flask server
-sio.connect('http://127.0.0.1:5000')
-sio.start_background_task(keep_alive)
-sio.wait()
+if __name__ == "__main__":
+    register_with_main_server()  # 🟢 Register on startup
+    socketio.run(app, host="0.0.0.0", port=5001)
