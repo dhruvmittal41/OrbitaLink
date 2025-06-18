@@ -2,30 +2,24 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Dashboard</title>
-  <link rel="stylesheet" href="static/css/style.css">
+  <title>Select Satellite</title>
+  <link rel="stylesheet" href="/static/css/style.css">
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
 <body>
-  <h1 id="dashboard-title">DASHBOARD</h1>
- 
+  <h1 id="dashboard-title">Select Satellite</h1>
 
   <div style="text-align:center; margin: 1rem;">
-     <a href="/select" class="btn-link">
-  🛰️ View Satellite by NORAD
-</a>
-  <label for="satellite-select" style="margin-right: 0.5rem;">Select Satellite:</label>
-  <select id="satellite-select" style="padding: 0.4rem; font-size: 1rem;"></select>
-</div>
-
-
-
-
-  <div id="units-container">
-    <!-- Field Unit Cards Injected Here -->
+    <label for="norad-dropdown" style="margin-right: 0.5rem;">Choose:</label>
+    <select id="norad-select" style="padding: 0.4rem; font-size: 1rem;"></select>
   </div>
 
-  <footer>
+  <div id="units-container"></div>
+
+  
+
+
+    <footer>
   <div style="font-weight: bold; margin-bottom: 4px;">SERVER STATUS: <span id="server-status">Connected</span></div>
   <div id="log-list" style="
   max-height: 140px;
@@ -44,7 +38,6 @@
 
 </footer>
 
-
-  <script src="static/js/dashboard.js"></script>
+ <script src="static/js/dashboard.js"></script>
 </body>
 </html>
