@@ -1,86 +1,95 @@
+/* Base Styles */
 body {
   margin: 0;
-  font-family: 'Segoe UI', sans-serif;
-  background: #f0f4f8;
-  display: flex;
-  justify-content: center;
-  align-items: start;
-  padding: 40px 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f0f4f8;
 }
 
-#dashboard {
-  display: flex;
-  width: 90%;
-  max-width: 1200px;
-  justify-content: space-between;
-  position: relative;
+h1 {
+  text-align: center;
+  font-size: 2.5rem;
+  color: #1d4ed8;
+  margin: 1rem 0;
 }
 
-.panel {
-  background: #ffffff;
+/* Units container for live client data */
+#units-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+  padding: 1rem;
+  justify-items: center;
+}
+
+.unit-card {
+  background-color: #f9f9f9;
+  border: 1px solid #ccc;
+  padding: 1rem;
   border-radius: 10px;
-  padding: 20px;
-  width: 45%;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  transition: transform 0.3s ease;
+  width: 100%;
+  max-width: 360px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
-.panel:hover {
+
+.unit-card:hover {
   transform: scale(1.02);
 }
 
-h2 {
-  text-align: center;
-  color: #333;
+.unit-card h2 {
+  font-size: 1.25rem;
+  color: #1e40af;
+  margin-bottom: 0.5rem;
 }
 
-ul {
-  list-style: none;
-  padding: 0;
+.unit-card p {
+  font-size: 0.95rem;
+  margin: 0.3rem 0;
+  color: #334155;
 }
 
-li {
-  background: #e7f3ff;
-  color: #0056b3;
-  margin: 10px 0;
-  padding: 12px;
-  border-radius: 5px;
-  text-align: center;
+/* Footer for server status & logs */
+footer {
+  position: fixed;
+  bottom: 0;
+  width: 100%;
+  background-color: #dbeafe;
+  border-top: 2px solid #60a5fa;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  color: #1e3a8a;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 100;
+}
+
+footer strong {
+  color: #1e40af;
+}
+
+#server-status {
   font-weight: bold;
-  position: relative;
-  animation: fadeIn 0.5s ease;
+  color: green;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-canvas#lineCanvas {
-  position: absolute;
-  top: 0;
-  left: 0;
-  z-index: -1;
+#log-message {
+  font-style: italic;
 }
 
 
-select, button {
-  display: block;
-  margin: 10px auto;
-  padding: 8px;
-  font-size: 16px;
-  width: 80%;
-  border-radius: 6px;
-  border: 1px solid #ccc;
-}
 
-button {
-  background-color: #00cc66;
-  color: white;
-  cursor: pointer;
-  transition: background-color 0.3s ease;
-}
+.btn-link {
+    display: inline-block;
+    padding: 10px 20px;
+    background-color: #2d89ef;
+    color: white;
+    text-decoration: none;
+    font-weight: bold;
+    border-radius: 8px;
+    transition: background-color 0.3s ease;
+  }
 
-button:hover {
-  background-color: #00994d;
-}
+  .btn-link:hover {
+    background-color: #1b5fbd;
+  }
