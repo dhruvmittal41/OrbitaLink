@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dashboard - Client Overview</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body class="bg-gray-100">
+  <div class="flex h-screen">
+    <!-- Sidebar -->
+    <aside class="w-64 bg-white border-r p-4 shadow-md overflow-y-auto">
+      <h2 class="text-xl font-bold text-blue-700 mb-4">Options</h2>
+      <button id="btn-connected" class="w-full mb-3 px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded">Connected Clients</button>
+      <div id="fetched-data"></div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="flex-1 p-6 overflow-y-auto">
+      <h1 class="text-3xl font-semibold text-gray-800 mb-6">Client Dashboard</h1>
+      <div id="units-container" class="grid grid-cols-1 sm:grid-cols-2 gap-6"></div>
+    </main>
+  </div>
+
+  <!-- Footer -->
+  <footer class="fixed bottom-0 left-0 w-full bg-blue-100 border-t border-blue-300 p-2 text-sm text-blue-900">
+    <div class="text-center font-semibold">
+      SERVER STATUS: <span id="server-status" class="text-green-600">Connected</span>
+    </div>
+    <div id="log-list" class="max-h-40 overflow-y-auto bg-white mt-2 p-2 border border-blue-300 rounded shadow-inner"></div>
+  </footer>
+
+<script>
+const socket = io();
+const unitsContainer = document.getElementById("units-container");
+const logList = document.getElementById("log-list");
+const serverStatus = document.getElementById("server-status");
+
+let currentView = "clients"; // Switch between client and satellite views
+let clientCache = {}; // Cache for client data keyed by IP
+
+// ✅ Connection status indicator
+socket.on("connect", () => {
+  serverStatus.textContent = "Connected";
+  serverStatus.classList.replace("text-red-600", "text-green-600");
+});
+
+// 📃 Server log updates
+socket.on("log", (log) => {
+  const entry = document.createElement("div");
+  entry.textContent = log;
+  logList.appendChild(entry);
+  logList.scrollTop = logList.scrollHeight;
+});
+
+// 🛰️ Satellite match renderer
+function renderMatchCard(match) {
+  unitsContainer.innerHTML = "";
+
+  const card = document.createElement("div");
+  card.className = "bg-white shadow-md rounded p-4 border border-gray-200";
+
+  card.innerHTML = `
+    <h2 class="text-xl font-bold text-blue-800">${match.name}</h2>
+    <p><strong>Azimuth:</strong> ${match.az}°</p>
+    <p><strong>Elevation:</strong> ${match.el}°</p>
+    <div class="text-sm mt-2">
+      <p><strong>TLE Line 1:</strong> ${match.tle_line1}</p>
+      <p><strong>TLE Line 2:</strong> ${match.tle_line2}</p>
+    </div>
+  `;
+
+  unitsContainer.appendChild(card);
+}
+
+// 🧭 Trigger satellite fetch for a client
+function fetchMatchingSatellites(clientId, az, el) {
+  console.log("Requesting satellite match for", clientId, az, el);
+  socket.emit("fetch_satellite_match", {
+    client_id: clientId,
+    az: az,
+    el: el
+  });
+  currentView = "satellite";
+}
+
+// 📦 Render client card
+function renderClientCard(client) {
+  const card = document.createElement("div");
+  card.className = "bg-white shadow-md rounded p-4 border border-gray-200";
+  card.id = `client-${client.ip}`;
+
+  card.innerHTML = `
+    <h2 class="text-xl font-semibold text-blue-700 mb-2">${client.name || client.ip}</h2>
+    <p><strong>IP:</strong> ${client.ip}</p>
+    <p><strong>Azimuth:</strong> ${client.az}°</p>
+    <p><strong>Elevation:</strong> ${client.el}°</p>
+    <p><strong>Time:</strong> ${client.time}</p>
+  `;
+
+  const matchBtn = document.createElement("button");
+  matchBtn.className = "mt-4 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold rounded";
+  matchBtn.textContent = "Find Matching Satellites 🔭";
+  matchBtn.addEventListener("click", () => {
+    fetchMatchingSatellites(client.name || client.ip, client.az, client.el);
+  });
+
+  card.appendChild(matchBtn);
+  unitsContainer.appendChild(card);
+}
+
+// 📡 Real-time client update handler
+socket.on("client_data_update", ({ clients }) => {
+  if (currentView !== "clients") return;
+
+  unitsContainer.innerHTML = "";
+  clients.forEach(client => {
+    clientCache[client.ip] = client;
+    renderClientCard(client);
+  });
+});
+
+// 🛰️ Satellite match data handler
+socket.on("matched_satellites", ({ client_id, matches }) => {
+  console.log("🔭 Matches received for", client_id);
+
+  let fetchedSection = document.getElementById("fetched-data");
+
+  // Create section if not present
+  if (!fetchedSection) {
+    fetchedSection = document.createElement("div");
+    fetchedSection.id = "fetched-data";
+    const title = document.createElement("h3");
+    title.textContent = "Fetched Data";
+    title.className = "text-blue-700 font-bold mt-4 mb-2";
+    fetchedSection.appendChild(title);
+    document.querySelector("aside").appendChild(fetchedSection);
+  }
+
+  const blockId = `sidebar-client-${client_id}`;
+  const existingClientBlock = document.getElementById(blockId);
+  if (existingClientBlock) existingClientBlock.remove();
+
+  const clientBlock = document.createElement("div");
+  clientBlock.id = blockId;
+  clientBlock.className = "mb-3";
+
+  const toggleBtn = document.createElement("button");
+  toggleBtn.textContent = client_id;
+  toggleBtn.className = "w-full text-left text-sm font-semibold text-gray-800 bg-gray-200 hover:bg-gray-300 rounded px-2 py-1";
+  
+  const matchList = document.createElement("div");
+  matchList.className = "mt-2 ml-2 hidden";
+
+  toggleBtn.onclick = () => {
+    matchList.classList.toggle("hidden");
+  };
+
+  matches.forEach(match => {
+    const satBtn = document.createElement("button");
+    satBtn.textContent = match.name;
+    satBtn.className = "block w-full text-left text-blue-600 hover:underline rounded px-2 py-1 text-sm";
+    satBtn.onclick = () => renderMatchCard(match);
+    matchList.appendChild(satBtn);
+  });
+
+  clientBlock.appendChild(toggleBtn);
+  clientBlock.appendChild(matchList);
+  fetchedSection.appendChild(clientBlock);
+});
+
+// 🔘 Show connected clients on sidebar click
+document.getElementById("btn-connected").addEventListener("click", () => {
+  currentView = "clients";
+  unitsContainer.innerHTML = "";
+  socket.emit("request_clients"); // optional hook
+});
+</script>
+
+
+
+
+</body>
+</html>

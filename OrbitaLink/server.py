@@ -1,189 +1,128 @@
-from flask import Flask, send_from_directory, request
+from flask import Flask, send_from_directory, request, jsonify
 from flask_socketio import SocketIO, emit
 from datetime import datetime
-from pydantic import BaseModel, ValidationError, Field
+from pydantic import BaseModel, ValidationError
 import requests
 import os
 import random
-from flask import jsonify
+from uuid import uuid4
+from skyfield.api import load, Topos
+from skyfield.api import EarthSatellite
+from skyfield.api import Loader
 
 app = Flask(__name__, static_folder="static")
 socketio = SocketIO(app, cors_allowed_origins="*")
-API_KEY = "2ec61f431b6e20db0262d465508aa20c2bd90e11"
 
-# In-memory client storage
+API_KEY = "2ec61f431b6e20db0262d465508aa20c2bd90e11"
 client_data_map = {}
 
-from typing import Optional
-from uuid import uuid4
-
-
+# -------- Satellite Model --------
 class Satellite(BaseModel):
-    id: Optional[int] = None
+    id: int
     name: str
-    tle1: Optional[str] = "N/A"
-    tle2: Optional[str] = "N/A"
+    tle1: str
+    tle2: str
 
-
-# -------------------- 🌐 External Data --------------------
-
-
-@app.route("/api/satellite/<int:norad_id>")
-def get_satellite_by_norad(norad_id):
-    try:
-        url = f"https://db.satnogs.org/api/satellites/?norad_cat_id={norad_id}"
-        response = requests.get(url, timeout=5)
-
-        if response.status_code != 200:
-            return (
-                jsonify({"error": f"SatNOGS API returned {response.status_code}"}),
-                502,
-            )
-
-        data = response.json()
-
-        if not data:
-            return jsonify({"error": "No satellite found for given NORAD ID"}), 404
-
-        return jsonify(data[0])  # Return first matching satellite
-    except requests.exceptions.RequestException as e:
-        return jsonify({"error": f"Request error: {str(e)}"}), 500
-    except Exception as e:
-        return jsonify({"error": f"Unexpected error: {str(e)}"}), 500
-
-
+# -------- Fetch + Match Logic --------
 def fetch_satellites():
-    headers = {"Authorization": f"Token {API_KEY}"}
     try:
-        response = requests.get(
-            "https://db.satnogs.org/api/satellites/", headers=headers
-        )
-        if response.status_code == 200:
-            raw_data = response.json()
-            valid_satellites = []
-            for item in raw_data[:20]:  # You can adjust the limit
-                try:
-                    # Assign fallback id if not present
-                    if "id" not in item:
-                        item["id"] = abs(hash(item.get("sat_id", str(uuid4())))) % (
-                            10**6
-                        )
+        url = "https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle"
+        response = requests.get(url)
+        response.raise_for_status()
 
-                    sat = Satellite(**item)
-                    valid_satellites.append(sat)
-                except ValidationError as e:
-                    print(
-                        f"⚠️ Validation Error for satellite: {item.get('name', 'Unknown')} -",
-                        e.errors()[0]["msg"],
-                    )
-            return valid_satellites
+        lines = response.text.strip().splitlines()
+        satellites = []
+
+        # TLEs come in blocks of 3 lines: name, line1, line2
+        for i in range(0, len(lines), 3):
+            try:
+                name = lines[i].strip()
+                line1 = lines[i+1].strip()
+                line2 = lines[i+2].strip()
+                sat = EarthSatellite(line1, line2, name)
+                satellites.append((sat, name, line1, line2))
+            except Exception as e:
+                print(f"[TLE PARSE ERROR] Line {i}: {e}")
+                continue
+
+        print(f"[TLE] Loaded {len(satellites)} valid satellites.")
+        return satellites
+
     except Exception as e:
-        print("[SATELLITE FETCH ERROR]", e)
-    return []
+        print("[CELESTRAK FETCH ERROR]", e)
+        return []
 
 
-def convert_satellite_to_client_format(sat: Satellite):
-    return {
-        "name": sat.name,
-        "ip": f"192.168.0.{random.randint(1, 255)}",
-        "lat": f"{round(random.uniform(-90, 90), 2)}°N",
-        "lon": f"{round(random.uniform(-180, 180), 2)}°E",
-        "tle_line1": sat.tle1,
-        "tle_line2": sat.tle2,
-        "az": round(random.uniform(0, 360), 2),
-        "el": round(random.uniform(0, 90), 2),
-        "time": datetime.now().strftime("%I:%M:%S %p IST"),
-        "temp": round(random.uniform(20, 35), 1),
-        "humidity": round(random.uniform(40, 80), 1),
-    }
+def match_satellite_by_az_el(client_az, client_el, observer_lat=28.61, observer_lon=77.23):
+    ts = load.timescale()
+    t = ts.now()
+    observer = Topos(latitude_degrees=observer_lat, longitude_degrees=observer_lon)
+    observer_position = observer.at(t)
+
+    matches = []
+    for sat, name, line1, line2 in fetch_satellites():
+        try:
+            topocentric = (sat - observer).at(t)
+            alt, az, _ = topocentric.altaz()
+            azimuth, elevation = az.degrees, alt.degrees
+
+            if abs(azimuth - client_az) < 5 and abs(elevation - client_el) < 5:
+                matches.append({
+                    "name": name,
+                    "az": round(azimuth, 2),
+                    "el": round(elevation, 2),
+                    "tle_line1": line1,
+                    "tle_line2": line2,
+                })
+        except Exception as e:
+            print(f"[MATCH ERROR] {name}: {e}")
+    return matches
 
 
-# -------------------- 📡 Socket Events --------------------
+
+# -------- SocketIO Events --------
 @socketio.on("connect")
 def handle_connect():
-    log_msg = (
-        f"[{datetime.now().strftime('%H:%M:%S')}] Dashboard connected: {request.sid}"
-    )
-    print(log_msg)
-    emit("log", log_msg)
-
+    emit("log", f"[{datetime.now().strftime('%H:%M:%S')}] Dashboard connected: {request.sid}")
 
 @socketio.on("client_data")
 def handle_client_data(data):
-    client_id = data.get("client_ip", request.sid)
+    client_name = data.get("name",request.sid)
+    client_id = data.get("ip", request.sid)
     client_data_map[client_id] = data
-
-    # Broadcast updated data to all dashboards
+    print(f"📡 Broadcasting data for {len(client_data_map)} client(s)")
     socketio.emit("client_data_update", {"clients": list(client_data_map.values())})
+    socketio.emit("log", f"[{datetime.now().strftime('%H:%M:%S')}] Data received from {client_id}")
 
-    log_msg = f"[{datetime.now().strftime('%H:%M:%S')}] Data received from {client_id}"
-    print(log_msg)
-    socketio.emit("log", log_msg)
+@socketio.on("fetch_satellite_match")
+def handle_satellite_match(data):
+    az = float(data.get("az", 0))
+    el = float(data.get("el", 0))
+    client_id = data.get("client_id", "unknown")
 
-
-@socketio.on("get_satellite_list")
-def send_satellite_list():
-    sats = fetch_satellites()
-    dropdown_data = [{"id": sat.id, "name": sat.name} for sat in sats]
-    emit("satellite_list", dropdown_data)
-
-
-@socketio.on("get_satellite_data")
-def send_selected_satellite_data(sat_id):
-    sats = fetch_satellites()
-    selected = next((s for s in sats if s.id == int(sat_id)), None)
-    if selected:
-        formatted = convert_satellite_to_client_format(selected)
-        emit("client_data_update", {"clients": [formatted]})
-        emit("log", f"Fetched data for: {formatted['name']}")
+    matches = match_satellite_by_az_el(az, el)
+    if matches:
+        socketio.emit("matched_satellites", {
+            "client_id": client_id,
+            "matches": matches
+        })
+        socketio.emit("log", f"[Match] {len(matches)} satellite(s) matched AZ:{az} EL:{el}")
     else:
-        emit("log", f"No satellite found with ID {sat_id}")
+        socketio.emit("log", f"[No Match] No satellites found for AZ:{az}, EL:{el}")
 
 
-# -------------------- 🧩 Static Routes --------------------
-
-
-@app.route("/api/satellites")
-def get_all_satellites():
-    satellites = fetch_satellites()
-    return jsonify([s.model_dump() for s in satellites])
-
-
-@app.route("/select")
-def satellite_selector():
-    return app.send_static_file("select.html")
-
-
-@app.route("/api/norad-list")
-def get_norad_list():
-    try:
-        response = requests.get(
-            "https://db.satnogs.org/api/satellites/",
-            headers={"User-Agent": "Mozilla/5.0"},
-            params={"format": "json", "ordering": "-norad_cat_id", "limit": 50},
-        )
-        response.raise_for_status()
-        return jsonify(response.json())
-    except requests.exceptions.RequestException as e:
-        return jsonify({"error": str(e)}), 500
-
-
+# -------- REST APIs & Static --------
 @app.route("/")
 def index():
-    return send_from_directory(".", "dashboard.html")
-
+    return app.send_static_file("dashboard.html")
 
 @app.route("/js/<path:filename>")
 def serve_js(filename):
     return send_from_directory(os.path.join(app.static_folder, "js"), filename)
 
-
 @app.route("/css/<path:filename>")
 def serve_css(filename):
     return send_from_directory(os.path.join(app.static_folder, "css"), filename)
 
-
-# -------------------- 🚀 Run --------------------
 if __name__ == "__main__":
     socketio.run(app, host="0.0.0.0", port=5000, debug=True)
-    app.run(debug=True)
