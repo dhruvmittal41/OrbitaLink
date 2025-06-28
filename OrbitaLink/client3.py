@@ -86,7 +86,6 @@ def on_assign_fu_id(data):
 
 @sio.on("az_el_update")
 def on_az_el_update(data):
-    global FU_ID
     if data.get("fu_id") != FU_ID:
         return
     norad_id = data.get("norad_id")
@@ -106,11 +105,8 @@ def on_az_el_update(data):
                     "alt": ALTITUDE
                 }
             })
-        else:
-            print(f"⚠️ AZ/EL could not be computed for NORAD {norad_id}")
     except Exception as e:
-        print(f"⚠️ Error computing AZ/EL: {e}")
-
+        print(f"⚠️ Error in AZ/EL update handler: {e}")
 
 # Initial trigger
 def send_initial_sensor_data():

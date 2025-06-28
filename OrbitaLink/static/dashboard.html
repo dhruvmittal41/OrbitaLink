@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Dashboard - Client Overview</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>Field Unit Dashboard</title>
+  <link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
 <body class="bg-gray-100">
@@ -12,174 +12,160 @@
     <!-- Sidebar -->
     <aside class="w-64 bg-white border-r p-4 shadow-md overflow-y-auto">
       <h2 class="text-xl font-bold text-blue-700 mb-4">Options</h2>
-      <button id="btn-connected" class="w-full mb-3 px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded">Connected Clients</button>
-      <div id="fetched-data"></div>
+      <button id="btn-refresh" class="w-full mb-3 px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded">Refresh Clients</button>
     </aside>
 
     <!-- Main content -->
     <main class="flex-1 p-6 overflow-y-auto">
-      <h1 class="text-3xl font-semibold text-gray-800 mb-6">Client Dashboard</h1>
-      <div id="units-container" class="grid grid-cols-1 sm:grid-cols-2 gap-6"></div>
+      <h1 class="text-3xl font-semibold text-gray-800 mb-6">Connected Field Units</h1>
+      <div id="units-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></div>
     </main>
   </div>
 
-  <!-- Footer -->
   <footer class="fixed bottom-0 left-0 w-full bg-blue-100 border-t border-blue-300 p-2 text-sm text-blue-900">
     <div class="text-center font-semibold">
       SERVER STATUS: <span id="server-status" class="text-green-600">Connected</span>
     </div>
-    <div id="log-list" class="max-h-40 overflow-y-auto bg-white mt-2 p-2 border border-blue-300 rounded shadow-inner"></div>
   </footer>
 
 <script>
 const socket = io();
 const unitsContainer = document.getElementById("units-container");
-const logList = document.getElementById("log-list");
 const serverStatus = document.getElementById("server-status");
+const FUDataMap = {};
+const satelliteOptions = [
+  "ISS (ZARYA)",
+  "NOAA 15",
+  "NOAA 18",
+  "NOAA 19",
+  "TERRA",
+  "AQUA"
+];
 
-let currentView = "clients"; // Switch between client and satellite views
-let clientCache = {}; // Cache for client data keyed by IP
-
-// ✅ Connection status indicator
+// On socket connection
 socket.on("connect", () => {
-  serverStatus.textContent = "Connected";
+  console.log("✅ Socket connected to server.");
+  serverStatus.innerText = "Connected";
   serverStatus.classList.replace("text-red-600", "text-green-600");
+  socket.emit("request_clients");
+  console.log("📡 Requested all clients.");
 });
 
-// 📃 Server log updates
-socket.on("log", (log) => {
-  const entry = document.createElement("div");
-  entry.textContent = log;
-  logList.appendChild(entry);
-  logList.scrollTop = logList.scrollHeight;
-});
+// Render each FU card
+function renderFUCard(fu) {
+  const cardId = `card-${fu.fu_id}`;
+  let card = document.getElementById(cardId);
 
-// 🛰️ Satellite match renderer
-function renderMatchCard(match) {
-  unitsContainer.innerHTML = "";
+  if (!card) {
+    console.log(`🔧 Creating new card for ${fu.fu_id}`);
+    card = document.createElement("div");
+    card.className = "bg-white shadow-md rounded p-4 border border-gray-200";
+    card.id = cardId;
 
-  const card = document.createElement("div");
-  card.className = "bg-white shadow-md rounded p-4 border border-gray-200";
+    card.innerHTML = `
+      <h2 class="text-xl font-bold text-blue-800 mb-2">${fu.fu_id}</h2>
+      <p><strong>Temperature:</strong> <span id="${fu.fu_id}-temp">--</span> °C</p>
+      <p><strong>Humidity:</strong> <span id="${fu.fu_id}-hum">--</span> %</p>
+      <p><strong>Latitude:</strong> <span id="${fu.fu_id}-Lat">--</span></p>
+      <p><strong>Longitude:</strong> <span id="${fu.fu_id}-Long">--</span></p>
 
-  card.innerHTML = `
-    <h2 class="text-xl font-bold text-blue-800">${match.name}</h2>
-    <p><strong>Azimuth:</strong> ${match.az}°</p>
-    <p><strong>Elevation:</strong> ${match.el}°</p>
-    <div class="text-sm mt-2">
-      <p><strong>TLE Line 1:</strong> ${match.tle_line1}</p>
-      <p><strong>TLE Line 2:</strong> ${match.tle_line2}</p>
-    </div>
-  `;
+      <label for="sat-select-${fu.fu_id}" class="block mt-4 font-semibold text-sm">Select Satellite:</label>
+      <select id="sat-select-${fu.fu_id}" class="mt-1 w-full px-2 py-1 border rounded bg-gray-50">
+        <option value="">-- Choose a satellite --</option>
+        ${satelliteOptions.map(sat => `<option value="${sat}">${sat}</option>`).join("")}
+      </select>
 
-  unitsContainer.appendChild(card);
-}
+      <div class="mt-4 text-sm">
+        <p><strong>Selected Satellite:</strong> <span id="${fu.fu_id}-satellite" class="text-blue-600">--</span></p>
+        <p><strong>Computed AZ:</strong> <span id="${fu.fu_id}-az">--</span>°</p>
+        <p><strong>Computed EL:</strong> <span id="${fu.fu_id}-el">--</span>°</p>
+      </div>
 
-// 🧭 Trigger satellite fetch for a client
-function fetchMatchingSatellites(clientId, az, el) {
-  console.log("Requesting satellite match for", clientId, az, el);
-  socket.emit("fetch_satellite_match", {
-    client_id: clientId,
-    az: az,
-    el: el
-  });
-  currentView = "satellite";
-}
+    `;
+    unitsContainer.appendChild(card);
 
-// 📦 Render client card
-function renderClientCard(client) {
-  const card = document.createElement("div");
-  card.className = "bg-white shadow-md rounded p-4 border border-gray-200";
-  card.id = `client-${client.ip}`;
+    // Attach event listeners only once (since card is newly created)
+    document.getElementById(`sat-select-${fu.fu_id}`).addEventListener("change", (e) => {
+      const selectedSat = e.target.value;
+      console.log(`🎯 Selected satellite for ${fu.fu_id}: ${selectedSat}`);
+      if (selectedSat) {
+        socket.emit("select_satellite", { fu_id: fu.fu_id, satellite_name: selectedSat });
+        document.getElementById(`${fu.fu_id}-satellite`).innerText = selectedSat;
+      }
+    });
 
-  card.innerHTML = `
-    <h2 class="text-xl font-semibold text-blue-700 mb-2">${client.name || client.ip}</h2>
-    <p><strong>IP:</strong> ${client.ip}</p>
-    <p><strong>Azimuth:</strong> ${client.az}°</p>
-    <p><strong>Elevation:</strong> ${client.el}°</p>
-    <p><strong>Time:</strong> ${client.time}</p>
-  `;
-
-  const matchBtn = document.createElement("button");
-  matchBtn.className = "mt-4 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold rounded";
-  matchBtn.textContent = "Find Matching Satellites 🔭";
-  matchBtn.addEventListener("click", () => {
-    fetchMatchingSatellites(client.name || client.ip, client.az, client.el);
-  });
-
-  card.appendChild(matchBtn);
-  unitsContainer.appendChild(card);
-}
-
-// 📡 Real-time client update handler
-socket.on("client_data_update", ({ clients }) => {
-  if (currentView !== "clients") return;
-
-  unitsContainer.innerHTML = "";
-  clients.forEach(client => {
-    clientCache[client.ip] = client;
-    renderClientCard(client);
-  });
-});
-
-// 🛰️ Satellite match data handler
-socket.on("matched_satellites", ({ client_id, matches }) => {
-  console.log("🔭 Matches received for", client_id);
-
-  let fetchedSection = document.getElementById("fetched-data");
-
-  // Create section if not present
-  if (!fetchedSection) {
-    fetchedSection = document.createElement("div");
-    fetchedSection.id = "fetched-data";
-    const title = document.createElement("h3");
-    title.textContent = "Fetched Data";
-    title.className = "text-blue-700 font-bold mt-4 mb-2";
-    fetchedSection.appendChild(title);
-    document.querySelector("aside").appendChild(fetchedSection);
+    document.getElementById(`recompute-${fu.fu_id}`).addEventListener("click", () => {
+      console.log(`🔁 Recompute requested for ${fu.fu_id}`);
+      socket.emit("poll_az_el", { fu_id: fu.fu_id });
+    });
   }
 
-  const blockId = `sidebar-client-${client_id}`;
-  const existingClientBlock = document.getElementById(blockId);
-  if (existingClientBlock) existingClientBlock.remove();
+  // Update values
+  document.getElementById(`${fu.fu_id}-temp`).innerText = fu.sensor_data?.temperature ?? "--";
+  document.getElementById(`${fu.fu_id}-hum`).innerText = fu.sensor_data?.humidity ?? "--";
+  document.getElementById(`${fu.fu_id}-Lat`).innerText = fu.sensor_data?.Latitude ?? "--";
+  document.getElementById(`${fu.fu_id}-Long`).innerText = fu.sensor_data?.Longitude ?? "--";
 
-  const clientBlock = document.createElement("div");
-  clientBlock.id = blockId;
-  clientBlock.className = "mb-3";
+  if (fu.satellite) {
+    document.getElementById(`${fu.fu_id}-satellite`).innerText = fu.satellite;
+  }
 
-  const toggleBtn = document.createElement("button");
-  toggleBtn.textContent = client_id;
-  toggleBtn.className = "w-full text-left text-sm font-semibold text-gray-800 bg-gray-200 hover:bg-gray-300 rounded px-2 py-1";
-  
-  const matchList = document.createElement("div");
-  matchList.className = "mt-2 ml-2 hidden";
+  if (fu.az !== undefined && fu.el !== undefined) {
+    updateAzEl(fu.fu_id, fu.az, fu.el);
+  }
+}
 
-  toggleBtn.onclick = () => {
-    matchList.classList.toggle("hidden");
-  };
+function updateAzEl(fu_id, az, el) {
+  const azSpan = document.getElementById(`${fu_id}-az`);
+  const elSpan = document.getElementById(`${fu_id}-el`);
+  if (azSpan && elSpan) {
+    azSpan.innerText = az !== null ? az.toFixed(2) : "--";
+    elSpan.innerText = el !== null ? el.toFixed(2) : "--";
+  }
+}
 
-  matches.forEach(match => {
-    const satBtn = document.createElement("button");
-    satBtn.textContent = match.name;
-    satBtn.className = "block w-full text-left text-blue-600 hover:underline rounded px-2 py-1 text-sm";
-    satBtn.onclick = () => renderMatchCard(match);
-    matchList.appendChild(satBtn);
+// Server sends updated FU list
+socket.on("client_data_update", ({ clients }) => {
+  const seen = new Set();
+
+  clients.forEach(fu => {
+    if (!fu.fu_id || !fu.sensor_data) return;
+    seen.add(fu.fu_id);
+    FUDataMap[fu.fu_id] = fu;
+    renderFUCard(fu);
   });
 
-  clientBlock.appendChild(toggleBtn);
-  clientBlock.appendChild(matchList);
-  fetchedSection.appendChild(clientBlock);
+  // 🔥 Remove any stale cards
+  Object.keys(FUDataMap).forEach(fu_id => {
+    if (!seen.has(fu_id)) {
+      const card = document.getElementById(`card-${fu_id}`);
+      if (card) card.remove();
+      delete FUDataMap[fu_id];
+    }
+  });
 });
 
-// 🔘 Show connected clients on sidebar click
-document.getElementById("btn-connected").addEventListener("click", () => {
-  currentView = "clients";
-  unitsContainer.innerHTML = "";
-  socket.emit("request_clients"); // optional hook
+
+// Receive az/el command from server
+socket.on("az_el_command", ({ fu_id, az, el }) => {
+  console.log(`📡 Server sent AZ/EL for ${fu_id}: AZ=${az}, EL=${el}`);
+  updateAzEl(fu_id, az, el);
+});
+
+// Fallback event
+socket.on("az_el_update", ({ fu_id, az, el }) => {
+  console.log(`📡 AZ/EL update for ${fu_id}: AZ=${az}, EL=${el}`);
+  if (az != null && el != null) {
+    updateAzEl(fu_id, az, el);
+  }
+});
+
+// Manual refresh
+document.getElementById("btn-refresh").addEventListener("click", () => {
+  console.log("🔄 Refreshing client list...");
+  socket.emit("request_clients");
 });
 </script>
-
-
-
 
 </body>
 </html>
