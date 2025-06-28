@@ -4,18 +4,24 @@ import random
 import requests
 import geocoder
 from skyfield.api import load, wgs84, EarthSatellite
+import uuid
+
+# Get MAC address as FU_ID
+def get_mac_address():
+    mac = uuid.getnode()
+    return ':'.join(f"{(mac >> ele) & 0xff:02x}" for ele in range(40, -1, -8))
 
 # Initialize
 ts = load.timescale()
 sio = socketio.Client()
 SERVER_URL = "https://musical-computing-machine-pjwjxqp7pqx6h777v-8080.app.github.dev/"
-FU_ID = None  # Assigned by server
+FU_ID = get_mac_address()  # MAC address as identity
 
 # Auto-detect location via IP
 g = geocoder.ip('me')
 LATITUDE = g.latlng[0] if g.latlng else 28.6139
 LONGITUDE = g.latlng[1] if g.latlng else 77.2090
-ALTITUDE = 216  # Estimated
+ALTITUDE = 216  # Optional altitude
 
 # Sensor simulation
 def generate_sensor_data():
@@ -27,12 +33,11 @@ def generate_sensor_data():
         "Longitude": LONGITUDE
     }
 
-# Space-Track credentials (secure these in real applications)
+# Space-Track credentials
 SPACETRACK_USERNAME = 'mittaldhruv41@gmail.com'
 SPACETRACK_PASSWORD = 'dhruvmittal4123'
 TLE_CACHE = {}
 
-# Get TLE from Space-Track
 def get_tle(norad_id):
     login_url = "https://www.space-track.org/ajaxauth/login"
     data_url = f"https://www.space-track.org/basicspacedata/query/class/tle_latest/NORAD_CAT_ID/{norad_id}/orderby/ORDINAL asc/limit/1/format/tle"
@@ -55,7 +60,6 @@ def get_tle_cached(norad_id):
         TLE_CACHE[norad_id] = get_tle(norad_id)
     return TLE_CACHE[norad_id]
 
-# Compute AZ/EL
 def compute_az_el(norad_id, lat, lon, alt=0):
     try:
         tle1, tle2 = get_tle_cached(norad_id)
@@ -78,12 +82,6 @@ def connect():
     sio.start_background_task(send_sensor_data)
     sio.start_background_task(poll_az_el_loop)
 
-@sio.on("assign_fu_id")
-def on_assign_fu_id(data):
-    global FU_ID
-    FU_ID = data.get("fu_id")
-    print(f"🎯 Assigned FU_ID: {FU_ID}")
-
 @sio.on("az_el_update")
 def on_az_el_update(data):
     if data.get("fu_id") != FU_ID:
@@ -105,12 +103,13 @@ def on_az_el_update(data):
                     "alt": ALTITUDE
                 }
             })
+        else:
+            print(f"⚠️ AZ/EL could not be computed for NORAD {norad_id}")
     except Exception as e:
-        print(f"⚠️ Error in AZ/EL update handler: {e}")
+        print(f"⚠️ Error computing AZ/EL: {e}")
 
-# Initial trigger
+# Initial sensor push
 def send_initial_sensor_data():
-    global FU_ID
     data = {
         "fu_id": FU_ID,
         "sensor_data": generate_sensor_data()
@@ -118,7 +117,7 @@ def send_initial_sensor_data():
     print("📤 Sending initial sensor data:", data)
     sio.emit("field_unit_data", data)
 
-# Send data every 5s
+# Periodic sensor data
 def send_sensor_data():
     while True:
         if FU_ID:
@@ -130,14 +129,14 @@ def send_sensor_data():
             sio.emit("field_unit_data", data)
         time.sleep(5)
 
-# Poll AZ/EL every 5s
+# Periodic AZ/EL poll
 def poll_az_el_loop():
     while True:
         if FU_ID:
             sio.emit("poll_az_el", {"fu_id": FU_ID})
         time.sleep(5)
 
-# ===== MAIN =====
+# ===== MAIN LOOP =====
 if __name__ == "__main__":
     while True:
         try:

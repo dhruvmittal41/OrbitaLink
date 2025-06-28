@@ -42,7 +42,6 @@ const satelliteOptions = [
   "AQUA"
 ];
 
-// On socket connection
 socket.on("connect", () => {
   console.log("✅ Socket connected to server.");
   serverStatus.innerText = "Connected";
@@ -50,8 +49,6 @@ socket.on("connect", () => {
   socket.emit("request_clients");
   console.log("📡 Requested all clients.");
 });
-
-// Render each FU card
 function renderFUCard(fu) {
   const cardId = `card-${fu.fu_id}`;
   let card = document.getElementById(cardId);
@@ -80,12 +77,13 @@ function renderFUCard(fu) {
         <p><strong>Computed AZ:</strong> <span id="${fu.fu_id}-az">--</span>°</p>
         <p><strong>Computed EL:</strong> <span id="${fu.fu_id}-el">--</span>°</p>
       </div>
-
     `;
     unitsContainer.appendChild(card);
 
-    // Attach event listeners only once (since card is newly created)
-    document.getElementById(`sat-select-${fu.fu_id}`).addEventListener("change", (e) => {
+    const select = document.getElementById(`sat-select-${fu.fu_id}`);
+    
+    // ✅ Attach event
+    select.addEventListener("change", (e) => {
       const selectedSat = e.target.value;
       console.log(`🎯 Selected satellite for ${fu.fu_id}: ${selectedSat}`);
       if (selectedSat) {
@@ -93,27 +91,40 @@ function renderFUCard(fu) {
         document.getElementById(`${fu.fu_id}-satellite`).innerText = selectedSat;
       }
     });
-
-    document.getElementById(`recompute-${fu.fu_id}`).addEventListener("click", () => {
-      console.log(`🔁 Recompute requested for ${fu.fu_id}`);
-      socket.emit("poll_az_el", { fu_id: fu.fu_id });
-    });
   }
 
-  // Update values
+  // ✅ Always update values
   document.getElementById(`${fu.fu_id}-temp`).innerText = fu.sensor_data?.temperature ?? "--";
   document.getElementById(`${fu.fu_id}-hum`).innerText = fu.sensor_data?.humidity ?? "--";
   document.getElementById(`${fu.fu_id}-Lat`).innerText = fu.sensor_data?.Latitude ?? "--";
   document.getElementById(`${fu.fu_id}-Long`).innerText = fu.sensor_data?.Longitude ?? "--";
 
-  if (fu.satellite) {
-    document.getElementById(`${fu.fu_id}-satellite`).innerText = fu.satellite;
-  }
+  // ✅ Set satellite display and dropdown value
+ if (fu.satellite) {
+  const display = document.getElementById(`${fu.fu_id}-satellite`);
+  const select = document.getElementById(`sat-select-${fu.fu_id}`);
 
+  display.innerText = fu.satellite;
+
+  if (select) {
+    const foundOption = [...select.options].find(opt => opt.value.trim() === fu.satellite.trim());
+    if (foundOption) {
+      select.value = foundOption.value;
+      console.log(`✅ Restored selected satellite for ${fu.fu_id}: ${foundOption.value}`);
+    } else {
+      console.warn(`⚠️ Could not match persisted satellite '${fu.satellite}' in dropdown.`);
+    }
+  }
+}
+
+
+  // ✅ Set AZ/EL
   if (fu.az !== undefined && fu.el !== undefined) {
     updateAzEl(fu.fu_id, fu.az, fu.el);
   }
 }
+
+
 
 function updateAzEl(fu_id, az, el) {
   const azSpan = document.getElementById(`${fu_id}-az`);
@@ -124,7 +135,6 @@ function updateAzEl(fu_id, az, el) {
   }
 }
 
-// Server sends updated FU list
 socket.on("client_data_update", ({ clients }) => {
   const seen = new Set();
 
@@ -135,7 +145,7 @@ socket.on("client_data_update", ({ clients }) => {
     renderFUCard(fu);
   });
 
-  // 🔥 Remove any stale cards
+  // Remove stale cards
   Object.keys(FUDataMap).forEach(fu_id => {
     if (!seen.has(fu_id)) {
       const card = document.getElementById(`card-${fu_id}`);
@@ -145,14 +155,11 @@ socket.on("client_data_update", ({ clients }) => {
   });
 });
 
-
-// Receive az/el command from server
 socket.on("az_el_command", ({ fu_id, az, el }) => {
   console.log(`📡 Server sent AZ/EL for ${fu_id}: AZ=${az}, EL=${el}`);
   updateAzEl(fu_id, az, el);
 });
 
-// Fallback event
 socket.on("az_el_update", ({ fu_id, az, el }) => {
   console.log(`📡 AZ/EL update for ${fu_id}: AZ=${az}, EL=${el}`);
   if (az != null && el != null) {
@@ -160,12 +167,10 @@ socket.on("az_el_update", ({ fu_id, az, el }) => {
   }
 });
 
-// Manual refresh
 document.getElementById("btn-refresh").addEventListener("click", () => {
   console.log("🔄 Refreshing client list...");
   socket.emit("request_clients");
 });
 </script>
-
 </body>
 </html>

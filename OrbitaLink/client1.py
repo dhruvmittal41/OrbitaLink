@@ -4,7 +4,6 @@ import random
 import requests
 from skyfield.api import load, wgs84, EarthSatellite
 
-
 ts = load.timescale()
 
 sio = socketio.Client()

@@ -1,0 +1,38 @@
+{
+  "00:0d:3a:f0:ce:72": {
+    "sensor_data": {
+      "temperature": 26.9,
+      "humidity": 35.9,
+      "pressure": 996.3,
+      "Latitude": 18.5196,
+      "Longitude": 73.8554
+    },
+    "satellite": "NOAA 15",
+    "az": 192.39,
+    "el": -52.4,
+    "gps": {
+      "lat": 18.5196,
+      "lon": 73.8554,
+      "alt": 216
+    },
+    "norad_id": 25338
+  },
+  "2c:cf:67:41:a5:45": {
+    "sensor_data": {
+      "temperature": 23.6,
+      "humidity": 40.8,
+      "pressure": 1006.2,
+      "Latitude": 27.1833,
+      "Longitude": 78.0167
+    },
+    "satellite": "NOAA 19",
+    "az": 184.63,
+    "el": -68.55,
+    "gps": {
+      "lat": 27.1833,
+      "lon": 78.0167,
+      "alt": 216
+    },
+    "norad_id": 33591
+  }
+}
