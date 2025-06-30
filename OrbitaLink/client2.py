@@ -1,43 +1,71 @@
 import socketio
 import time
-import random
 import requests
 import geocoder
+import serial
 from skyfield.api import load, wgs84, EarthSatellite
 import uuid
 
-# Get MAC address as FU_ID
+# === Constants ===
+SERVER_URL = "https://musical-computing-machine-pjwjxqp7pqx6h777v-8080.app.github.dev/"
+SERIAL_PORT = '/dev/ttyACM0'  # Update if needed, e.g., /dev/ttyUSB0
+BAUD_RATE = 9600
+ALTITUDE = 216  # in meters
+
+# === MAC Address as FU ID ===
 def get_mac_address():
     mac = uuid.getnode()
     return ':'.join(f"{(mac >> ele) & 0xff:02x}" for ele in range(40, -1, -8))
 
-# Initialize
-ts = load.timescale()
-sio = socketio.Client()
-SERVER_URL = "https://musical-computing-machine-pjwjxqp7pqx6h777v-8080.app.github.dev/"
-FU_ID = get_mac_address()  # MAC address as identity
+FU_ID = get_mac_address()
 
-# Auto-detect location via IP
+# === Geo IP Location ===
 g = geocoder.ip('me')
 LATITUDE = g.latlng[0] if g.latlng else 28.6139
 LONGITUDE = g.latlng[1] if g.latlng else 77.2090
-ALTITUDE = 216  # Optional altitude
 
-# Sensor simulation
-def generate_sensor_data():
-    return {
-        "temperature": round(random.uniform(20, 35), 1),
-        "humidity": round(random.uniform(30, 70), 1),
-        "pressure": round(random.uniform(990, 1020), 1),
-        "Latitude": LATITUDE,
-        "Longitude": LONGITUDE
-    }
-
-# Space-Track credentials
+# === Space-Track Setup ===
 SPACETRACK_USERNAME = 'mittaldhruv41@gmail.com'
 SPACETRACK_PASSWORD = 'dhruvmittal4123'
 TLE_CACHE = {}
 
+ts = load.timescale()
+sio = socketio.Client()
+
+# === Serial Connection Setup ===
+try:
+    ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
+    time.sleep(2)
+    print(f"✅ Connected to Arduino on {SERIAL_PORT}")
+except Exception as e:
+    print(f"❌ Failed to open serial port {SERIAL_PORT}: {e}")
+    ser = None
+
+# === Real Sensor Data from Arduino ===
+def generate_sensor_data():
+    if not ser or not ser.is_open:
+        print("⚠️ Serial port not available.")
+        return {}
+
+    try:
+        line = ser.readline().decode('utf-8').strip()
+        if line.startswith("Humidity:"):
+            print(f"📥 From Arduino: {line}")
+            parts = line.split()
+            humidity = float(parts[1].replace('%', ''))
+            temperature = float(parts[4].replace('°C', ''))
+            return {
+                "temperature": temperature,
+                "humidity": humidity,
+                "Latitude": LATITUDE,
+                "Longitude": LONGITUDE
+            }
+    except Exception as e:
+        print(f"⚠️ Error reading/parsing serial: {e}")
+
+    return {}
+
+# === TLE Fetching ===
 def get_tle(norad_id):
     login_url = "https://www.space-track.org/ajaxauth/login"
     data_url = f"https://www.space-track.org/basicspacedata/query/class/tle_latest/NORAD_CAT_ID/{norad_id}/orderby/ORDINAL asc/limit/1/format/tle"
@@ -74,7 +102,7 @@ def compute_az_el(norad_id, lat, lon, alt=0):
         print(f"⚠️ Error computing AZ/EL: {e}")
         return None, None
 
-# ===== SOCKET EVENTS =====
+# === Socket Events ===
 @sio.event
 def connect():
     print("✅ Connected to server")
@@ -108,7 +136,7 @@ def on_az_el_update(data):
     except Exception as e:
         print(f"⚠️ Error computing AZ/EL: {e}")
 
-# Initial sensor push
+# === Sensor Data Push ===
 def send_initial_sensor_data():
     data = {
         "fu_id": FU_ID,
@@ -117,7 +145,6 @@ def send_initial_sensor_data():
     print("📤 Sending initial sensor data:", data)
     sio.emit("field_unit_data", data)
 
-# Periodic sensor data
 def send_sensor_data():
     while True:
         if FU_ID:
@@ -129,14 +156,13 @@ def send_sensor_data():
             sio.emit("field_unit_data", data)
         time.sleep(5)
 
-# Periodic AZ/EL poll
 def poll_az_el_loop():
     while True:
         if FU_ID:
             sio.emit("poll_az_el", {"fu_id": FU_ID})
         time.sleep(5)
 
-# ===== MAIN LOOP =====
+# === Main Loop ===
 if __name__ == "__main__":
     while True:
         try:
