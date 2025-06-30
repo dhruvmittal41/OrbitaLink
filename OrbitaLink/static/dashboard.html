@@ -1,176 +1,41 @@
+<!-- static/dashboard.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Field Unit Dashboard</title>
-  <link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
+  <title>OrbitaLink Ground Station</title>
+
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.css" rel="stylesheet" />
+
+  <!-- Scripts -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+  <script defer src="/static/js/main.js"></script>
 </head>
-<body class="bg-gray-100">
-  <div class="flex h-screen">
-    <!-- Sidebar -->
-    <aside class="w-64 bg-white border-r p-4 shadow-md overflow-y-auto">
-      <h2 class="text-xl font-bold text-blue-700 mb-4">Options</h2>
-      <button id="btn-refresh" class="w-full mb-3 px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded">Refresh Clients</button>
-    </aside>
 
-    <!-- Main content -->
-    <main class="flex-1 p-6 overflow-y-auto">
-      <h1 class="text-3xl font-semibold text-gray-800 mb-6">Connected Field Units</h1>
-      <div id="units-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></div>
-    </main>
-  </div>
+<body>
+  <header>
+    <h1>🛰️ OrbitaLink Ground Station</h1>
+    <span id="status">🟢 Connected</span>
+  </header>
 
-  <footer class="fixed bottom-0 left-0 w-full bg-blue-100 border-t border-blue-300 p-2 text-sm text-blue-900">
-    <div class="text-center font-semibold">
-      SERVER STATUS: <span id="server-status" class="text-green-600">Connected</span>
-    </div>
+  <main>
+    <section class="clients-panel">
+      <h2>Active Field Units</h2>
+      <div id="client-container" class="card-container"></div>
+    </section>
+
+    <section class="logs-panel">
+      <h2>System Logs</h2>
+      <div id="log-box" class="log-box"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>&copy; 2025 OrbitaLink Pvt Ltd • Live Groundstation Monitor</p>
   </footer>
-
-<script>
-const socket = io();
-const unitsContainer = document.getElementById("units-container");
-const serverStatus = document.getElementById("server-status");
-const FUDataMap = {};
-const satelliteOptions = [
-  "ISS (ZARYA)",
-  "NOAA 15",
-  "NOAA 18",
-  "NOAA 19",
-  "TERRA",
-  "AQUA"
-];
-
-socket.on("connect", () => {
-  console.log("✅ Socket connected to server.");
-  serverStatus.innerText = "Connected";
-  serverStatus.classList.replace("text-red-600", "text-green-600");
-  socket.emit("request_clients");
-  console.log("📡 Requested all clients.");
-});
-function renderFUCard(fu) {
-  const cardId = `card-${fu.fu_id}`;
-  let card = document.getElementById(cardId);
-
-  if (!card) {
-    console.log(`🔧 Creating new card for ${fu.fu_id}`);
-    card = document.createElement("div");
-    card.className = "bg-white shadow-md rounded p-4 border border-gray-200";
-    card.id = cardId;
-
-    card.innerHTML = `
-      <h2 class="text-xl font-bold text-blue-800 mb-2">${fu.fu_id}</h2>
-      <p><strong>Temperature:</strong> <span id="${fu.fu_id}-temp">--</span> °C</p>
-      <p><strong>Humidity:</strong> <span id="${fu.fu_id}-hum">--</span> %</p>
-      <p><strong>Latitude:</strong> <span id="${fu.fu_id}-Lat">--</span></p>
-      <p><strong>Longitude:</strong> <span id="${fu.fu_id}-Long">--</span></p>
-
-      <label for="sat-select-${fu.fu_id}" class="block mt-4 font-semibold text-sm">Select Satellite:</label>
-      <select id="sat-select-${fu.fu_id}" class="mt-1 w-full px-2 py-1 border rounded bg-gray-50">
-        <option value="">-- Choose a satellite --</option>
-        ${satelliteOptions.map(sat => `<option value="${sat}">${sat}</option>`).join("")}
-      </select>
-
-      <div class="mt-4 text-sm">
-        <p><strong>Selected Satellite:</strong> <span id="${fu.fu_id}-satellite" class="text-blue-600">--</span></p>
-        <p><strong>Computed AZ:</strong> <span id="${fu.fu_id}-az">--</span>°</p>
-        <p><strong>Computed EL:</strong> <span id="${fu.fu_id}-el">--</span>°</p>
-      </div>
-    `;
-    unitsContainer.appendChild(card);
-
-    const select = document.getElementById(`sat-select-${fu.fu_id}`);
-    
-    // ✅ Attach event
-    select.addEventListener("change", (e) => {
-      const selectedSat = e.target.value;
-      console.log(`🎯 Selected satellite for ${fu.fu_id}: ${selectedSat}`);
-      if (selectedSat) {
-        socket.emit("select_satellite", { fu_id: fu.fu_id, satellite_name: selectedSat });
-        document.getElementById(`${fu.fu_id}-satellite`).innerText = selectedSat;
-      }
-    });
-  }
-
-  // ✅ Always update values
-  document.getElementById(`${fu.fu_id}-temp`).innerText = fu.sensor_data?.temperature ?? "--";
-  document.getElementById(`${fu.fu_id}-hum`).innerText = fu.sensor_data?.humidity ?? "--";
-  document.getElementById(`${fu.fu_id}-Lat`).innerText = fu.sensor_data?.Latitude ?? "--";
-  document.getElementById(`${fu.fu_id}-Long`).innerText = fu.sensor_data?.Longitude ?? "--";
-
-  // ✅ Set satellite display and dropdown value
- if (fu.satellite) {
-  const display = document.getElementById(`${fu.fu_id}-satellite`);
-  const select = document.getElementById(`sat-select-${fu.fu_id}`);
-
-  display.innerText = fu.satellite;
-
-  if (select) {
-    const foundOption = [...select.options].find(opt => opt.value.trim() === fu.satellite.trim());
-    if (foundOption) {
-      select.value = foundOption.value;
-      console.log(`✅ Restored selected satellite for ${fu.fu_id}: ${foundOption.value}`);
-    } else {
-      console.warn(`⚠️ Could not match persisted satellite '${fu.satellite}' in dropdown.`);
-    }
-  }
-}
-
-
-  // ✅ Set AZ/EL
-  if (fu.az !== undefined && fu.el !== undefined) {
-    updateAzEl(fu.fu_id, fu.az, fu.el);
-  }
-}
-
-
-
-function updateAzEl(fu_id, az, el) {
-  const azSpan = document.getElementById(`${fu_id}-az`);
-  const elSpan = document.getElementById(`${fu_id}-el`);
-  if (azSpan && elSpan) {
-    azSpan.innerText = az !== null ? az.toFixed(2) : "--";
-    elSpan.innerText = el !== null ? el.toFixed(2) : "--";
-  }
-}
-
-socket.on("client_data_update", ({ clients }) => {
-  const seen = new Set();
-
-  clients.forEach(fu => {
-    if (!fu.fu_id || !fu.sensor_data) return;
-    seen.add(fu.fu_id);
-    FUDataMap[fu.fu_id] = fu;
-    renderFUCard(fu);
-  });
-
-  // Remove stale cards
-  Object.keys(FUDataMap).forEach(fu_id => {
-    if (!seen.has(fu_id)) {
-      const card = document.getElementById(`card-${fu_id}`);
-      if (card) card.remove();
-      delete FUDataMap[fu_id];
-    }
-  });
-});
-
-socket.on("az_el_command", ({ fu_id, az, el }) => {
-  console.log(`📡 Server sent AZ/EL for ${fu_id}: AZ=${az}, EL=${el}`);
-  updateAzEl(fu_id, az, el);
-});
-
-socket.on("az_el_update", ({ fu_id, az, el }) => {
-  console.log(`📡 AZ/EL update for ${fu_id}: AZ=${az}, EL=${el}`);
-  if (az != null && el != null) {
-    updateAzEl(fu_id, az, el);
-  }
-});
-
-document.getElementById("btn-refresh").addEventListener("click", () => {
-  console.log("🔄 Refreshing client list...");
-  socket.emit("request_clients");
-});
-</script>
 </body>
 </html>

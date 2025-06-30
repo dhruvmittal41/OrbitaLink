@@ -1,19 +1,13 @@
 {
-  "2c:cf:67:41:a5:45": {
-    "sensor_data": {
-      "temperature": 27.1,
-      "humidity": 55.0,
-      "Latitude": 29.9479,
-      "Longitude": 78.1603
-    },
-    "satellite": "ISS (ZARYA)",
-    "az": 174.99,
-    "el": -32.41,
+  "60:45:bd:73:66:5f": {
+    "sensor_data": {},
+    "satellite": "KINEIS-3C",
+    "az": 292.4,
+    "el": -12.16,
     "gps": {
-      "lat": 29.9479,
-      "lon": 78.1603,
+      "lat": 18.5196,
+      "lon": 73.8554,
       "alt": 216
-    },
-    "norad_id": 25544
+    }
   }
 }
